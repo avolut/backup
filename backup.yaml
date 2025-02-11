@@ -1,0 +1,8 @@
+name: 'vscode'
+
+# Directories to backup
+directories:
+  - "/Users/riz/Developer/avolut-backup/.vscode"
+
+# Backup schedule (in cron format)
+schedule: "0 0 * * *"  # Daily at midnight
