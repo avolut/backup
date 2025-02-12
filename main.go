@@ -42,7 +42,13 @@ func runBackup(ctx context.Context) {
 		log.Println("Another backup is already in progress")
 		return
 	}
-	defer utils.Unlock()
+	// Ensure lock is released even if panic occurs
+	defer func() {
+		utils.Unlock()
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic during backup: %v", r)
+		}
+	}()
 
 	// Create a new context that can be cancelled
 	ctx, cancel := context.WithCancel(ctx)
@@ -62,7 +68,11 @@ func runBackup(ctx context.Context) {
 		log.Printf("Error connecting to file repository: %v", err)
 		return
 	}
-	defer fileRepo.Close(ctx)
+	defer func() {
+		if err := fileRepo.Close(ctx); err != nil {
+			log.Printf("Warning: error closing file repository: %v", err)
+		}
+	}()
 	log.Println("Successfully connected to file repository")
 
 	// Initialize database backup repository
@@ -72,14 +82,22 @@ func runBackup(ctx context.Context) {
 		log.Printf("Error connecting to database repository: %v", err)
 		return
 	}
-	defer dbRepo.Close(ctx)
+	defer func() {
+		if err := dbRepo.Close(ctx); err != nil {
+			log.Printf("Warning: error closing database repository: %v", err)
+		}
+	}()
 	log.Println("Successfully connected to database repository")
+
+	// Track overall backup status
+	hasErrors := false
 
 	// Backup directories using file repository
 	for _, dir := range config.Directories {
 		log.Printf("Starting backup of directory: %s", dir)
 		if err := backup.BackupDir(ctx, fileRepo, dir); err != nil {
 			log.Printf("Error backing up directory %s: %v", dir, err)
+			hasErrors = true
 			continue
 		}
 		log.Printf("Successfully backed up directory: %s", dir)
@@ -90,12 +108,17 @@ func runBackup(ctx context.Context) {
 		log.Printf("Starting backup of database: %s", db.Name)
 		if err := backup.BackupDatabase(ctx, dbRepo, db); err != nil {
 			log.Printf("Error backing up database %s: %v", db.Name, err)
+			hasErrors = true
 			continue
 		}
 		log.Printf("Successfully backed up database: %s", db.Name)
 	}
 
-	log.Printf("Backup completed for %s", config.Name)
+	if hasErrors {
+		log.Printf("Backup completed for %s with some errors", config.Name)
+	} else {
+		log.Printf("Backup completed successfully for %s", config.Name)
+	}
 }
 
 func checkPgDumpAvailability() error {
@@ -121,14 +144,14 @@ directories:
 # PostgreSQL database configurations
 databases:
   # Add database configurations here
-  # - name: "example_db"
-  #   host: "localhost"
-  #   port: 5432
-  #   dbname: "example"
-  #   user: "postgres"
+  # - name: "example_db"  			# Unique identifier for this database
+  #   host: "localhost"					# Database host
+  #   port: 5432 
+  #   user: "postgres"          # Database user
+  #   password: "your_password" # Database password
+  #   dbname: "example"  				# Database name
   #   schema: "public"
-  #   password: "your_password"
-  #   sslmode: "disable"
+  #   sslmode: "disable" # SSL mode (disable, require, verify-ca, verify-full)
 
 # Backup schedule (in cron format)
 schedule: "0 0 * * *" # Daily at midnight
