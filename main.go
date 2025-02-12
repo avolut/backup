@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -95,7 +97,20 @@ func runBackup(ctx context.Context) {
 	log.Printf("Backup completed for %s", config.Name)
 }
 
+func checkPgDumpAvailability() error {
+	_, err := exec.LookPath("pg_dump")
+	if err != nil {
+		return fmt.Errorf("pg_dump command not found in PATH. Please install PostgreSQL client tools")
+	}
+	return nil
+}
+
 func main() {
+	// Check for pg_dump availability at startup
+	if err := checkPgDumpAvailability(); err != nil {
+		log.Fatal(err)
+	}
+
 	// Check if daemon mode is requested
 	if len(os.Args) > 1 && os.Args[1] == "--daemon" {
 		// Ensure .avolut directory exists
@@ -176,8 +191,6 @@ func main() {
 				case syscall.SIGUSR1:
 					// Log immediately when signal is received
 					log.Println("Received backup trigger signal")
-					// Run backup in a synchronized manner
-					log.Println("Starting backup...")
 					runBackup(ctx)
 					log.Println("Triggered backup completed")
 				case syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT:

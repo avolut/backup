@@ -18,6 +18,36 @@ import (
 )
 
 func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) error {
+	// Check pg_dump version
+	pgDumpVersion, err := exec.Command("pg_dump", "--version").Output()
+	if err != nil {
+		return fmt.Errorf("getting pg_dump version: %w", err)
+	}
+
+	// Get database version
+	dbVersionCmd := exec.Command("psql",
+		"--host", db.Host,
+		"--port", fmt.Sprintf("%d", db.Port),
+		"--username", db.User,
+		"--dbname", db.DBName,
+		"--tuples-only",
+		"--command", "SELECT version();",
+	)
+	dbVersionCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", db.Password))
+	dbVersion, err := dbVersionCmd.Output()
+	if err != nil {
+		return fmt.Errorf("getting database version: %w", err)
+	}
+
+	// Extract major version numbers for comparison
+	pgDumpMajorVersion := extractMajorVersion(string(pgDumpVersion))
+	dbMajorVersion := extractMajorVersion(string(dbVersion))
+
+	// Compare versions
+	if pgDumpMajorVersion != dbMajorVersion {
+		return fmt.Errorf("version mismatch: pg_dump version %s is not compatible with database version %s", pgDumpMajorVersion, dbMajorVersion)
+	}
+
 	// Create a temporary directory for the dump
 	tmpDir := filepath.Join(".avolut", "tmp")
 	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("%s_%s.sql", db.Name, time.Now().Format("20060102_150405")))
