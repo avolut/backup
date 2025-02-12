@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/avolut/backup/internal/config"
+	"github.com/avolut/backup/internal/utils"
 	"github.com/kopia/kopia/fs"
 	"github.com/kopia/kopia/fs/localfs"
 	"github.com/kopia/kopia/repo"
@@ -18,6 +19,11 @@ import (
 )
 
 func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) error {
+	// Set process priority to reduce CPU usage
+	if err := utils.SetProcessPriority(); err != nil {
+		fmt.Printf("Warning: failed to set process priority: %v\n", err)
+	}
+
 	// Check pg_dump version
 	pgDumpVersion, err := exec.Command("pg_dump", "--version").Output()
 	if err != nil {

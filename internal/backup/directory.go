@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/avolut/backup/internal/utils"
 	"github.com/kopia/kopia/fs"
 	"github.com/kopia/kopia/fs/localfs"
 	"github.com/kopia/kopia/repo"
@@ -16,6 +17,11 @@ import (
 )
 
 func BackupDir(ctx context.Context, r repo.Repository, dirPath string) error {
+	// Set process priority to reduce CPU usage
+	if err := utils.SetProcessPriority(); err != nil {
+		fmt.Printf("Warning: failed to set process priority: %v\n", err)
+	}
+
 	// Verify directory exists
 	info, err := os.Stat(dirPath)
 	if err != nil {

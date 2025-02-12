@@ -108,7 +108,10 @@ func ConnectToRepository(ctx context.Context, cfg *config.Config, configType Con
 	}
 
 	// Initialize repository if needed
-	if err := repo.Initialize(ctx, st, &repo.NewRepositoryOptions{}, backupPassword); err != nil {
+	initOpts := &repo.NewRepositoryOptions{}
+
+	// Initialize repository if needed
+	if err := repo.Initialize(ctx, st, initOpts, backupPassword); err != nil {
 		if err != repo.ErrAlreadyInitialized {
 			return nil, fmt.Errorf("initializing repository: %w", err)
 		}
