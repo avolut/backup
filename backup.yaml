@@ -1,8 +1,25 @@
-name: 'vscode'
+name: "vscode"
 
 # Directories to backup
 directories:
-  - "/Users/riz/Developer/avolut-backup/.vscode"
+  # - "/Users/riz/Developer/avolut-backup/.vscode"
+
+# PostgreSQL database configurations
+databases:
+  # - name: "main_db" # Unique identifier for this database
+  #   host: "localhost" # Database host
+  #   port: 5432 # PostgreSQL port
+  #   dbname: "your_database" # Database name
+  #   user: "your_username" # Database user
+  #   schema: "public"
+  #   password: "your_password" # Database password
+  #   sslmode: "disable" # SSL mode (disable, require, verify-ca, verify-full)
 
 # Backup schedule (in cron format)
-schedule: "0 0 * * *"  # Daily at midnight
+schedule: "0 0 * * *" # Daily at midnight
+# Example schedules:
+# "0 */6 * * *"   # Every 6 hours
+# "0 0 * * 0"     # Weekly on Sunday at midnight
+# "0 0 1 * *"     # Monthly on the 1st at midnight
+# "*/15 * * * *"  # Every 15 minutes
+
