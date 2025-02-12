@@ -22,10 +22,11 @@ const (
 )
 
 const (
-	backupPassword = "kopia-backup-2025"
-	b2BucketName   = "avolut-backup"
-	b2KeyID        = "004a2c1d76ae1cf0000000003"
-	b2Key          = "K00451kcIteAJimwP0eNKABY9F9SGqE"
+	backupPassword = "avolut123"
+	// Exported B2 storage credentials
+	B2BucketName = "avolut-backup"
+	B2KeyID      = "004a2c1d76ae1cf0000000003"
+	B2Key        = "K00451kcIteAJimwP0eNKABY9F9SGqE"
 )
 
 func formatPrefix(name string, suffix string) string {
@@ -68,10 +69,10 @@ func ConnectToRepository(ctx context.Context, cfg *config.Config, configType Con
 		"storage": map[string]interface{}{
 			"type": "b2",
 			"config": map[string]interface{}{
-				"bucket": b2BucketName,
+				"bucket": B2BucketName,
 				"prefix": formatPrefix(cfg.Name, suffix),
-				"keyID":  b2KeyID,
-				"key":    b2Key,
+				"keyID":  B2KeyID,
+				"key":    B2Key,
 			},
 		},
 		"caching": map[string]interface{}{
@@ -79,7 +80,7 @@ func ConnectToRepository(ctx context.Context, cfg *config.Config, configType Con
 		},
 		"hostname":                "avolut-backup",
 		"username":                os.Getenv("USER"),
-		"description":             fmt.Sprintf("Repository in B2: %s", b2BucketName),
+		"description":             fmt.Sprintf("Repository in B2: %s", B2BucketName),
 		"enableActions":           false,
 		"formatBlobCacheDuration": 900000000000,
 	}
@@ -93,17 +94,11 @@ func ConnectToRepository(ctx context.Context, cfg *config.Config, configType Con
 		return nil, fmt.Errorf("writing config file: %w", err)
 	}
 
-	// Open repository
-	r, err := repo.Open(ctx, configPath, backupPassword, &repo.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("opening repository: %w", err)
-	}
-
 	// Use B2 configuration with TLS settings
 	opts := &b2.Options{
-		BucketName: b2BucketName,
-		KeyID:      b2KeyID,
-		Key:        b2Key,
+		BucketName: B2BucketName,
+		KeyID:      B2KeyID,
+		Key:        B2Key,
 		Prefix:     formatPrefix(cfg.Name, suffix),
 	}
 
@@ -127,6 +122,12 @@ func ConnectToRepository(ctx context.Context, cfg *config.Config, configType Con
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("connecting to repository: %w", err)
+	}
+
+	// Open repository
+	r, err := repo.Open(ctx, configPath, backupPassword, &repo.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("opening repository: %w", err)
 	}
 
 	return r, nil

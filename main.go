@@ -14,6 +14,7 @@ import (
 	"github.com/avolut/backup/internal/backup"
 	"github.com/avolut/backup/internal/config"
 	"github.com/avolut/backup/internal/repository"
+	"github.com/avolut/backup/internal/sshd"
 	"github.com/avolut/backup/internal/utils"
 	"github.com/robfig/cron/v3"
 )
@@ -106,6 +107,45 @@ func checkPgDumpAvailability() error {
 }
 
 func main() {
+	// Initialize systemd notification support
+	if err := utils.InitSystemdNotify(); err != nil {
+		log.Printf("Warning: failed to initialize systemd notify: %v", err)
+	}
+
+	// Handle service installation/removal flags
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--service":
+			if len(os.Args) != 3 {
+				log.Fatal("Usage: --service [install|remove]")
+			}
+			switch os.Args[2] {
+			case "install":
+				if err := utils.InstallSystemdService(); err != nil {
+					log.Fatal(err)
+				}
+				log.Println("Service installed successfully")
+				return
+			case "remove":
+				if err := utils.RemoveSystemdService(); err != nil {
+					log.Fatal(err)
+				}
+				log.Println("Service removed successfully")
+				return
+			default:
+				log.Fatal("Usage: --service [install|remove]")
+			}
+		case "--connect":
+			if len(os.Args) != 3 {
+				log.Fatal("Usage: --connect [hostname]")
+			}
+			if err := utils.ConnectToHost(context.Background(), os.Args[2]); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+	}
+
 	// Check for pg_dump availability at startup
 	if err := checkPgDumpAvailability(); err != nil {
 		log.Fatal(err)
@@ -113,6 +153,10 @@ func main() {
 
 	// Check if daemon mode is requested
 	if len(os.Args) > 1 && os.Args[1] == "--daemon" {
+		// Create signal channel
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGUSR1, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT)
+
 		// Ensure .avolut directory exists
 		if err := os.MkdirAll(".avolut", 0755); err != nil {
 			log.Fatalf("Error creating daemon directory: %v", err)
@@ -156,19 +200,19 @@ func main() {
 		}
 		log.Printf("Daemon process started successfully with PID %d", pid)
 
-		// Set up signal handling
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGINT)
+		// Notify systemd that we're ready
+		if err := utils.NotifySystemd("READY=1"); err != nil {
+			log.Printf("Warning: failed to send ready notification: %v", err)
+		}
 
-		// Create background context
+		// Create a base context for the daemon
 		ctx := context.Background()
 
-		// Load config for cron schedule
+		// Load configuration
 		config, err := config.LoadConfig("backup.yaml")
 		if err != nil {
 			log.Fatalf("Error loading config: %v", err)
 		}
-		log.Printf("Loaded configuration with schedule: %s", config.Schedule)
 
 		// Initialize cron scheduler
 		c := cron.New()
@@ -182,6 +226,25 @@ func main() {
 		}
 		c.Start()
 		log.Println("Cron scheduler started")
+
+		// Initialize and start SSH server
+		sshServer, err := sshd.NewServer(41334, ".avolut/ssh", true, config.Name)
+		if err != nil {
+			log.Printf("Warning: failed to initialize SSH server: %v", err)
+		} else {
+			if err := sshServer.Start(); err != nil {
+				log.Printf("Warning: failed to start SSH server: %v", err)
+			} else {
+				log.Println("SSH server started successfully on port 41334")
+			}
+		}
+
+		// Collect and store IP information
+		if err := utils.CollectAndStoreIPs(ctx, config.Name); err != nil {
+			log.Printf("Warning: failed to collect and store IP information: %v", err)
+		} else {
+			log.Println("IP information collected and stored successfully")
+		}
 
 		// Handle signals
 		go func() {

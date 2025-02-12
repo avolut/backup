@@ -44,13 +44,14 @@ func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) 
 	dbMajorVersion := extractMajorVersion(string(dbVersion))
 
 	// Compare versions
-	if pgDumpMajorVersion != dbMajorVersion {
+	if pgDumpMajorVersion < dbMajorVersion {
 		return fmt.Errorf("version mismatch: pg_dump version %s is not compatible with database version %s", pgDumpMajorVersion, dbMajorVersion)
 	}
 
-	// Create a temporary directory for the dump
-	tmpDir := filepath.Join(".avolut", "tmp")
-	tmpFile := filepath.Join(tmpDir, fmt.Sprintf("%s_%s.sql", db.Name, time.Now().Format("20060102_150405")))
+	// Create a unique temporary directory for this backup
+	timestamp := time.Now().Format("20060102_150405")
+	tmpDir := filepath.Join(".avolut", "tmp", fmt.Sprintf("%s_%s", db.Name, timestamp))
+	tmpFile := filepath.Join(tmpDir, "dump.sql")
 
 	// Ensure the temporary directory exists
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
@@ -79,7 +80,7 @@ func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) 
 	src := snapshot.SourceInfo{
 		Host:     "localhost",
 		UserName: os.Getenv("USER"),
-		Path:     tmpFile,
+		Path:     tmpDir,
 	}
 
 	// Create writer session
@@ -93,9 +94,9 @@ func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) 
 		if cerr := writer.Close(writeContext); cerr != nil {
 			fmt.Printf("Warning: error closing writer: %v\n", cerr)
 		}
-		// Clean up temporary file
-		if err := os.Remove(tmpFile); err != nil {
-			fmt.Printf("Warning: error removing temporary file: %v\n", err)
+		// Clean up temporary directory
+		if err := os.RemoveAll(tmpDir); err != nil {
+			fmt.Printf("Warning: error removing temporary directory: %v\n", err)
 		}
 	}()
 
@@ -113,9 +114,9 @@ func BackupDatabase(ctx context.Context, r repo.Repository, db config.Database) 
 	policyTree := policy.BuildTree(nil, policy.DefaultPolicy)
 
 	// Upload the snapshot
-	entry, err := localfs.NewEntry(tmpFile)
+	entry, err := localfs.Directory(tmpDir)
 	if err != nil {
-		return fmt.Errorf("creating file entry: %w", err)
+		return fmt.Errorf("creating directory entry: %w", err)
 	}
 	uploaded, err := uploader.Upload(writeContext, entry, policyTree, src)
 	if err != nil {

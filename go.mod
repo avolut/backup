@@ -3,9 +3,11 @@ module github.com/avolut/backup
 go 1.23.6
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/kopia/kopia v0.19.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sevlyar/go-daemon v0.1.6
+	golang.org/x/crypto v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -116,7 +118,6 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/net v0.34.0 // indirect

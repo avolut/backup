@@ -1,4 +1,6 @@
-name: "vscode"
+# Global App Name
+# HARUS UNIK - TIDAK BOLEH ADA YG SAMA AVOLUT
+name: "coba"
 
 # Directories to backup
 directories:
@@ -6,14 +8,14 @@ directories:
 
 # PostgreSQL database configurations
 databases:
-  # - name: "main_db" # Unique identifier for this database
-  #   host: "localhost" # Database host
-  #   port: 5432 # PostgreSQL port
-  #   dbname: "your_database" # Database name
-  #   user: "your_username" # Database user
-  #   schema: "public"
-  #   password: "your_password" # Database password
-  #   sslmode: "disable" # SSL mode (disable, require, verify-ca, verify-full)
+  - name: "wrapmysite" # Unique identifier for this database
+    host: "107.155.75.50" # Database host
+    port: 5389 # PostgreSQL port
+    dbname: "wrapmysite" # Database name
+    user: "postgres" # Database user
+    schema: "public"
+    password: "hltsXdfWOOGNkd32xsMbzp6bgBXPzPCiob6UEH0XL3qSt9OuqvEyhN0o3gZNSjuY" # Database password
+    sslmode: "disable" # SSL mode (disable, require, verify-ca, verify-full)
 
 # Backup schedule (in cron format)
 schedule: "0 0 * * *" # Daily at midnight
