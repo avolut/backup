@@ -133,8 +133,9 @@ func main() {
 	// Check if backup.yaml exists, create with default config if not
 	if _, err := os.Stat("backup.yaml"); os.IsNotExist(err) {
 		defaultConfig := `# Global App Name
-# HARUS UNIK - TIDAK BOLEH ADA YG SAMA AVOLUT
-name: "backup-app"
+# HARUS UNIK - TIDAK BOLEH ADA YG SAMA
+# UNTUK SELURUH APP AVOLUT
+name: "your-app-name"
 
 # Directories to backup
 directories:
