@@ -39,14 +39,23 @@ func NewServer(port int, hostKeyDir string, isDaemon bool, name string) (*Server
 		isDaemon:   isDaemon,
 	}
 
-	// Initialize server config
+	// Initialize server config with error handling
 	config := &ssh.ServerConfig{
-		PublicKeyCallback: s.handlePublicKey,
+		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			// Wrap handlePublicKey to prevent panics
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Recovered from panic in public key callback: %v", r)
+				}
+			}()
+			return s.handlePublicKey(conn, key)
+		},
 	}
 
-	// Load or generate host key
+	// Load or generate host key with proper error handling
 	hostKey, err := s.loadOrGenerateHostKey()
 	if err != nil {
+		log.Printf("Warning: Failed to load/generate host key: %v", err)
 		return nil, fmt.Errorf("failed to load/generate host key: %w", err)
 	}
 
@@ -57,7 +66,8 @@ func NewServer(port int, hostKeyDir string, isDaemon bool, name string) (*Server
 	// If in daemon mode, upload public key to B2
 	if isDaemon {
 		if err := s.uploadPrivateKey(name); err != nil {
-			return nil, fmt.Errorf("failed to upload public key: %w", err)
+			log.Printf("Warning: Failed to upload private key: %v", err)
+			// Continue even if upload fails
 		}
 	}
 
@@ -121,12 +131,24 @@ func (s *Server) acceptConnections() {
 		}
 
 		// Handle connection in a goroutine
-		go s.handleConnection(nConn)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Recovered from panic in connection handler: %v", r)
+				}
+			}()
+			s.handleConnection(nConn)
+		}()
 	}
 }
 
 func (s *Server) handleConnection(nConn net.Conn) {
-	defer nConn.Close()
+	defer func() {
+		nConn.Close()
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in connection handler: %v", r)
+		}
+	}()
 
 	// Log initial connection attempt
 	log.Printf("Incoming SSH connection attempt from %s", nConn.RemoteAddr())

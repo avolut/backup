@@ -114,7 +114,7 @@ func isPortOpen(ip string, port int) bool {
 }
 
 func trySSHConnection(ip string, port int, privKey ssh.Signer) error {
-	// Configure SSH client
+	// Configure SSH client with proper timeouts and error handling
 	config := &ssh.ClientConfig{
 		User: "root",
 		Auth: []ssh.AuthMethod{
@@ -124,21 +124,36 @@ func trySSHConnection(ip string, port int, privKey ssh.Signer) error {
 		Timeout:         10 * time.Second,
 	}
 
-	// Try to connect
+	// Try to connect with proper error handling
 	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", ip, port), config)
 	if err != nil {
+		// Handle specific SSH errors
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return fmt.Errorf("SSH connection timed out: %w", err)
+		}
 		return fmt.Errorf("SSH connection failed: %w", err)
 	}
-	defer client.Close()
+	defer func() {
+		if client != nil {
+			client.Close()
+		}
+	}()
 
-	// Create a session
+	// Create a session with proper error handling
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
-	defer session.Close()
+	defer func() {
+		if session != nil {
+			session.Close()
+		}
+	}()
 
-	// Set up stdio forwarding
+	// Set up stdio forwarding with error checking
+	if session == nil {
+		return fmt.Errorf("invalid session: session is nil")
+	}
 	session.Stdin = os.Stdin
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
