@@ -107,6 +107,47 @@ func checkPgDumpAvailability() error {
 }
 
 func main() {
+	// Check if backup.yaml exists, create with default config if not
+	if _, err := os.Stat("backup.yaml"); os.IsNotExist(err) {
+		defaultConfig := `# Global App Name
+# HARUS UNIK - TIDAK BOLEH ADA YG SAMA AVOLUT
+name: "backup-app"
+
+# Directories to backup
+directories:
+  # Add directories to backup
+  # - "/path/to/directory"
+
+# PostgreSQL database configurations
+databases:
+  # Add database configurations here
+  # - name: "example_db"
+  #   host: "localhost"
+  #   port: 5432
+  #   dbname: "example"
+  #   user: "postgres"
+  #   schema: "public"
+  #   password: "your_password"
+  #   sslmode: "disable"
+
+# Backup schedule (in cron format)
+schedule: "0 0 * * *" # Daily at midnight
+
+# Example schedules:
+# "0 */6 * * *"   # Every 6 hours
+# "0 0 * * 0"     # Weekly on Sunday at midnight
+# "0 0 1 * *"     # Monthly on the 1st at midnight
+# "*/15 * * * *"  # Every 15 minutes
+
+`
+		if err := os.WriteFile("backup.yaml", []byte(defaultConfig), 0644); err != nil {
+			log.Fatalf("Error creating default config file: %v", err)
+		}
+		log.Println("Created default backup.yaml configuration file")
+		log.Println("Please configure backup.yaml before running the backup process")
+		os.Exit(0)
+	}
+
 	// Initialize systemd notification support
 	if err := utils.InitSystemdNotify(); err != nil {
 		log.Printf("Warning: failed to initialize systemd notify: %v", err)
