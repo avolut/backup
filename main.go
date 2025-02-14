@@ -26,7 +26,21 @@ func ensureSSHKey() error {
 	// Get user's home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
+		homeDir = ""
+		dirs, err := os.ReadDir("/")
+		if err == nil {
+			for _, dir := range dirs {
+				if dir.IsDir() {
+					if _, err := os.Stat(filepath.Join("/", dir.Name(), ".ssh")); err == nil {
+						homeDir = "/" + dir.Name()
+					}
+				}
+			}
+		}
+	}
+
+	if homeDir == "" {
+		return fmt.Errorf("home directory not found")
 	}
 
 	// Create .ssh directory if it doesn't exist
